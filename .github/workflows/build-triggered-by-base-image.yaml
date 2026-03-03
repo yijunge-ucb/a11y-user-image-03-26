@@ -7,6 +7,15 @@ name: Update Base Image Reference
 on:
   repository_dispatch:
     types: [base-image-updated]
+  
+  workflow_dispatch:
+    inputs:
+      base_image_name:
+        description: "Base image name (i.e. /ucb-datahub-2018/testing/base-python-image)"
+        required: true
+      base_image_sha:
+        description: "New base image SHA tag"
+        required: true
 
 jobs:
   update-base-image:
