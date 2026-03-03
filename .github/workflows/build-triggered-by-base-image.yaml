@@ -26,9 +26,15 @@ jobs:
 
       - name: Set variables
         run: |
-          echo "BASE_NAME=${{ github.event.client_payload.base_image_name }}" >> $GITHUB_ENV
-          echo "NEW_SHA=${{ github.event.client_payload.base_image_sha }}" >> $GITHUB_ENV
-          echo "BRANCH=update-base-image-${{ github.event.client_payload.base_image_sha }}" >> $GITHUB_ENV
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "BASE_NAME=${{ github.event.client_payload.base_image_name }}" >> $GITHUB_ENV
+            echo "NEW_SHA=${{ github.event.client_payload.base_image_sha }}" >> $GITHUB_ENV
+          else
+            echo "BASE_NAME=${{ github.event.inputs.base_image_name }}" >> $GITHUB_ENV
+            echo "NEW_SHA=${{ github.event.inputs.base_image_sha }}" >> $GITHUB_ENV
+          fi
+
+          echo "BRANCH=update-base-image-${NEW_SHA}" >> $GITHUB_ENV
 
       - name: Update Dockerfile
         run: |
