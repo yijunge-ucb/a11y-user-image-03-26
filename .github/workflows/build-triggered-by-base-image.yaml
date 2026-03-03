@@ -1,0 +1,73 @@
+permissions:
+  contents: write
+  pull-requests: write
+
+name: Update Base Image Reference
+
+on:
+  repository_dispatch:
+    types: [base-image-updated]
+
+jobs:
+  update-base-image:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set variables
+        run: |
+          echo "BASE_NAME=${{ github.event.client_payload.base_image_name }}" >> $GITHUB_ENV
+          echo "NEW_SHA=${{ github.event.client_payload.base_image_sha }}" >> $GITHUB_ENV
+          echo "BRANCH=update-base-image-${{ github.event.client_payload.base_image_sha }}" >> $GITHUB_ENV
+
+      - name: Update Dockerfile
+        run: |
+          echo "Updating Dockerfile to ${BASE_NAME}:${NEW_SHA}"
+
+          sed -i "s|FROM us-central1-docker.pkg.dev/${BASE_NAME}:.*|FROM us-central1-docker.pkg.dev/${BASE_NAME}:${NEW_SHA}|g" Dockerfile
+
+      - name: Set git identity
+        run: |
+          git config --global user.email "${{ inputs.image_builder_bot_email }}"
+          git config --global user.name "${{ inputs.image_builder_bot_name }}"
+
+      - name: Commit and Create PR if Needed
+        run: |
+          CHANGED_FILES=$(git status --porcelain -uno | awk '{print $2}')
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "No changes detected. Skipping PR creation."
+            exit 0
+          fi
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          git diff
+
+          git checkout -b ${BRANCH}
+
+          # Only add changed files
+          for file in ${CHANGED_FILES}; do
+            git add ${file}
+          done
+
+          MESSAGE="Update base image to ${BASE_NAME}:${NEW_SHA}"
+
+          git commit -m "${MESSAGE}"
+          git push origin ${BRANCH}
+
+          # Create PR body
+          cat << EOF > pr-body.txt
+          ${MESSAGE}
+
+          Updated files:
+          ${CHANGED_FILES}
+          EOF
+
+          gh pr new \
+            --title "${MESSAGE}" \
+            --body-file pr-body.txt \
+            --head ${BRANCH} \
+            --base main
