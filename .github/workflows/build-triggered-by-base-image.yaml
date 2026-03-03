@@ -7,7 +7,7 @@ name: Update Base Image Reference
 on:
   repository_dispatch:
     types: [base-image-updated]
-  
+
   workflow_dispatch:
     inputs:
       base_image_name:
