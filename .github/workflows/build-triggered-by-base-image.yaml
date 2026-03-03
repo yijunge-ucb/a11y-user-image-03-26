@@ -44,8 +44,8 @@ jobs:
 
       - name: Set git identity
         run: |
-          git config --global user.email "${{ inputs.image_builder_bot_email }}"
-          git config --global user.name "${{ inputs.image_builder_bot_name }}"
+          git config --global user.email "${{ var.IMAGE_BUILDER_BOT_EMAIL }}"
+          git config --global user.name "${{ var.IMAGE_BUILDER_BOT_NAME }}"
 
       - name: Commit and Create PR if Needed
         run: |
