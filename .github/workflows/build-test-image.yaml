@@ -12,3 +12,5 @@ on:
 jobs:
   call-shared-build-test-image:
     uses: berkeley-dsep-infra/update-deployment/.github/workflows/shared-build-test-image.yaml@DH-650
+    secrets:
+      GAR_SECRET_KEY: ${{ secrets.GAR_SECRET_KEY }}
