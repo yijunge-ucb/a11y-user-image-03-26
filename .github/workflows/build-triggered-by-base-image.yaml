@@ -54,10 +54,7 @@ jobs:
       - name: Update Dockerfile
         run: |
           echo "Updating Dockerfile to ${BASE_NAME}:${NEW_SHA}"
-          sed -i \
-            "s|FROM us-central1-docker.pkg.dev/${{ steps.vars.outputs.base_name }}:.*|\
-              FROM us-central1-docker.pkg.dev/${{ steps.vars.outputs.base_name }}:${{ steps.vars.outputs.new_sha }}|g" \
-              Dockerfile
+          sed -i "s|FROM us-central1-docker.pkg.dev/${{ steps.vars.outputs.base_name }}:.*|FROM us-central1-docker.pkg.dev/${{ steps.vars.outputs.base_name }}:${{ steps.vars.outputs.new_sha }}|g" Dockerfile
 
       - name: Set git identity
         run: |
