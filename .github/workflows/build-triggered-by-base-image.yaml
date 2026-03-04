@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       base_image_name:
-        description: "Base image name (i.e. /ucb-datahub-2018/testing/base-python-image)"
+        description: "Base image name (i.e. ucb-datahub-2018/testing/base-python-image)"
         required: true
       base_image_sha:
         description: "New base image SHA tag"
@@ -17,6 +17,10 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: "update-base-image-${{ github.event.client_payload.base_image_sha || github.event.inputs.base_image_sha }}"
+  cancel-in-progress: true
+
 jobs:
   update-base-image:
     runs-on: ubuntu-latest
@@ -24,68 +28,79 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set variables
+      - name: Resolve inputs
+        id: vars
         run: |
           if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            echo "BASE_NAME=${{ github.event.client_payload.base_image_name }}" >> $GITHUB_ENV
-            echo "NEW_SHA=${{ github.event.client_payload.base_image_sha }}" >> $GITHUB_ENV
+            BASE_NAME="${{ github.event.client_payload.base_image_name }}"
+            NEW_SHA="${{ github.event.client_payload.base_image_sha }}"
           else
-            echo "BASE_NAME=${{ github.event.inputs.base_image_name }}" >> $GITHUB_ENV
-            echo "NEW_SHA=${{ github.event.inputs.base_image_sha }}" >> $GITHUB_ENV
+            BASE_NAME="${{ github.event.inputs.base_image_name }}"
+            NEW_SHA="${{ github.event.inputs.base_image_sha }}"
           fi
 
-          echo "BRANCH=update-base-image-${NEW_SHA}" >> $GITHUB_ENV
+          BRANCH="update-base-image-$NEW_SHA"
+
+          echo "base_name=$BASE_NAME" >> $GITHUB_OUTPUT
+          echo "new_sha=$NEW_SHA" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Debug resolved variables
+        run: |
+          echo "BASE_NAME=${{ steps.vars.outputs.base_name }}"
+          echo "NEW_SHA=${{ steps.vars.outputs.new_sha }}"
+          echo "BRANCH=${{ steps.vars.outputs.branch }}"
 
       - name: Update Dockerfile
         run: |
           echo "Updating Dockerfile to ${BASE_NAME}:${NEW_SHA}"
-
           sed -i \
-                "s|FROM us-central1-docker.pkg.dev/${BASE_NAME}:.*|\
-          FROM us-central1-docker.pkg.dev/${BASE_NAME}:${NEW_SHA}|g" \
-                Dockerfile
+            "s|FROM us-central1-docker.pkg.dev/${{ steps.vars.outputs.base_name }}:.*|\
+              FROM us-central1-docker.pkg.dev/${{ steps.vars.outputs.base_name }}:${{ steps.vars.outputs.new_sha }}|g" \
+              Dockerfile
 
       - name: Set git identity
         run: |
           git config --global user.email "${{ vars.IMAGE_BUILDER_BOT_EMAIL }}"
           git config --global user.name "${{ vars.IMAGE_BUILDER_BOT_NAME }}"
 
-      - name: Commit and Create PR if Needed
+      - name: Commit and Create/Update PR
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          CHANGED_FILES=$(git status --porcelain -uno | awk '{print $2}')
+          BRANCH="${{ steps.vars.outputs.branch }}"
+          BASE_NAME="${{ steps.vars.outputs.base_name }}"
+          NEW_SHA="${{ steps.vars.outputs.new_sha }}"
 
+          CHANGED_FILES=$(git status --porcelain -uno | awk '{print $2}')
           if [ -z "$CHANGED_FILES" ]; then
             echo "No changes detected. Skipping PR creation."
             exit 0
           fi
 
-          echo "Changed files:"
-          echo "$CHANGED_FILES"
+          # Check if PR already exists
+          EXISTING_PR=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number // empty')
 
-          git diff
-
-          git checkout -b ${BRANCH}
-
-          # Only add changed files
-          for file in ${CHANGED_FILES}; do
-            git add ${file}
+          git checkout -B "$BRANCH"
+          for file in $CHANGED_FILES; do
+            git add "$file"
           done
 
-          MESSAGE="Update base image to ${BASE_NAME}:${NEW_SHA}"
+          COMMIT_MESSAGE="Update base image to ${BASE_NAME}:${NEW_SHA}"
+          git commit -m "$COMMIT_MESSAGE" || echo "No commit created"
 
-          git commit -m "${MESSAGE}"
-          git push origin ${BRANCH}
+          git push origin "$BRANCH" --force
 
-          # Create PR body
-          cat << EOF > pr-body.txt
-          ${MESSAGE}
-
-          Updated files:
-          ${CHANGED_FILES}
-          EOF
-
-          gh pr new \
-            --title "${MESSAGE}" \
-            --body-file pr-body.txt \
-            --head ${BRANCH} \
-            --base main
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Updating existing PR #$EXISTING_PR"
+            gh pr edit "$EXISTING_PR" \
+              --title "$COMMIT_MESSAGE" \
+              --body "Updated files: $CHANGED_FILES"
+          else
+            echo "Creating new PR"
+            gh pr create \
+              --title "$COMMIT_MESSAGE" \
+              --body "Updated files: $CHANGED_FILES" \
+              --head "$BRANCH" \
+              --base main
+          fi
