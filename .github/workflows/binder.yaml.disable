@@ -1,5 +1,4 @@
 name: Call Shared Binder Workflow
-
 on:
   pull_request_target:
     types: [opened]
