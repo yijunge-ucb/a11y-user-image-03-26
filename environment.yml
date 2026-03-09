@@ -27,9 +27,11 @@ dependencies:
   - pip:
       # required
       - nbgitpuller==1.3.0b1
+
       # otherstuff
       # Upgrade separate from what everyone else uses for now
       # https://github.com/berkeley-dsep-infra/datahub/issues/3693
+
       - nbconvert-a11y==2024.03.25
       - nb2pdf==0.6.2
       - nbpdfexport==0.2.1
